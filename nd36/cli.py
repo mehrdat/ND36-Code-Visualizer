@@ -321,7 +321,11 @@ def _no_such_variable(reader, trace, name):
             return
 
     low = name.lower()
-    near = [n for n in names if low in n.lower() or n.lower() in low]
+    # `n.lower() in low` is the "you typed a longer name" case (old_grid for
+    # grid). It needs a length floor, or every one-letter loop counter
+    # matches everything: "i" is a substring of "grid".
+    near = [n for n in names
+            if low in n.lower() or (len(n) >= 3 and n.lower() in low)]
     near += [n for n in difflib.get_close_matches(name, names, 5, 0.6)
              if n not in near]
     if near:
