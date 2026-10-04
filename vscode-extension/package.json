@@ -1,0 +1,82 @@
+{
+  "name": "nd",
+  "displayName": "ND36",
+  "description": "Record what your code did, then replay it: step through, watch every variable, see what never ran.",
+  "version": "0.1.0",
+  "publisher": "nd36",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Visualization",
+    "Data Science"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "nd.visualizeFile",
+        "title": "ND36: Record and replay this file",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "nd.openTrace",
+        "title": "ND36: Open an existing trace (.vizt)"
+      },
+      {
+        "command": "nd.stop",
+        "title": "ND36: Stop the server"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "nd.visualizeFile",
+          "when": "resourceExtname =~ /\\.(py|c|cc|cpp|cxx)$/",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "nd.visualizeFile",
+          "when": "resourceExtname =~ /\\.(py|c|cc|cpp|cxx)$/",
+          "group": "navigation@9"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ND36",
+      "properties": {
+        "nd.command": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the `nd` program. Run `which nd` in a terminal and paste it here. Leave empty to search the usual places."
+        },
+        "nd.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "The interpreter that has nd36 importable."
+        },
+        "nd.repoPath": {
+          "type": "string",
+          "default": "",
+          "description": "Folder containing the nd36 package. Leave empty if nd36 is installed."
+        },
+        "nd.port": {
+          "type": "number",
+          "default": 7879,
+          "description": "Port for the local nd server."
+        },
+        "nd.memory": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also measure memory (runs the script a second time under tracemalloc)."
+        }
+      }
+    }
+  },
+  "icon": "icon.png"
+}

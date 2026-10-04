@@ -1,0 +1,42 @@
+# Maintainer: Mehrdad <mehr.lashgari@gmail.com>
+# Arch Linux package. See packaging/README.md for how to publish to the AUR.
+pkgname=nd36
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Record what a program did, then replay it: step through, watch every variable, see what never ran"
+arch=('any')
+url="https://github.com/mehrdat/nd36"
+license=('MIT')
+depends=('python>=3.11')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+optdepends=(
+  'gdb: trace C and C++ programs'
+  'lldb: trace C and C++ programs (alternative to gdb)'
+  'clang: compile C/C++ for tracing'
+  'chromium: open the UI in its own window instead of a browser tab'
+  'python-pandas: DataFrame lineage panel'
+  'python-numpy: array summaries'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')   # replace with the real digest when you cut a release
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver"
+  for phase in 0 1 2 3 4; do
+    python "tests/test_phase${phase}.py"
+  done
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 COMMANDS.md "$pkgdir/usr/share/doc/$pkgname/COMMANDS.md"
+  install -Dm644 QUICKSTART.md "$pkgdir/usr/share/doc/$pkgname/QUICKSTART.md"
+}

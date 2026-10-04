@@ -1,0 +1,26 @@
+[project]
+name = "nd36"
+version = "0.1.0"
+description = "ND36 — record what a program did, then replay it"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []          # standard library only, on purpose
+license = { text = "MIT" }
+keywords = ["debugger", "tracing", "visualization", "profiler"]
+
+[project.urls]
+Homepage = "https://github.com/mehrdat/nd36"
+
+[project.scripts]
+nd = "nd36.cli:main"
+nd36 = "nd36.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["nd36"]
+
+[tool.setuptools.package-data]
+nd36 = ["vscode/**/*", "samples/*.py", "samples/*.c"]
