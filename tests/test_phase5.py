@@ -174,7 +174,8 @@ def test_dead_code_is_visible():
 
 def test_both_backends_agree():
     if len(BACKENDS) < 2:
-        print("  agreement    skipped (only %s available)" % BACKENDS[0])
+        print("  agreement    skipped (%s available)"
+              % (BACKENDS[0] if BACKENDS else "no debugger"))
         return
     seen = {}
     works = []

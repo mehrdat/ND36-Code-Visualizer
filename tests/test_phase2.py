@@ -121,7 +121,11 @@ def test_never_called_function_appears():
     names = {n["name"]: n["calls"] for n in nodes.values()}
     assert "never_called" in names, sorted(names)
     assert names["never_called"] == 0, names
-    assert names.get("Box.add") == 2, names
+    # Python 3.11 added co_qualname, so the same method is "Box.add" there
+    # and plain "add" on 3.10. Accept either rather than failing on a
+    # perfectly good interpreter.
+    add = names.get("Box.add", names.get("add"))
+    assert add == 2, names
     print("  call graph   Box.add ×2, record ×2, never_called ×0")
     shutil.rmtree(out)
 
