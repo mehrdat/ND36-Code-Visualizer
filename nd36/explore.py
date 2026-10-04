@@ -519,7 +519,9 @@ class Explorer:
                               aligns=["<", ">", ">", "<"], limit=20):
                 print("  " + line)
 
-        invs = self.a.invocations.get(name, [])
+        # Recorded when each call returns, so an inner call is stored before
+        # the outer one it was made from. Sort, or the table reads backwards.
+        invs = sorted(self.a.invocations.get(name, []))
         if invs:
             print("\n%seach call%s" % (BOLD, OFF))
             rows = []
