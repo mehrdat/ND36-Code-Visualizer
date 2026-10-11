@@ -96,6 +96,11 @@ def _traces_here():
     return found
 
 
+PLACEHOLDERS = {"trace", "TRACE", "file", "FILE", "name", "NAME",
+                "path", "PATH", "script", "SCRIPT", "yourscript.py",
+                "FILE.py", "TRACE.nd"}
+
+
 def _die(msg, hint=None):
     print("%s%s%s" % (RED, msg, OFF), file=sys.stderr)
     if hint:
@@ -111,8 +116,11 @@ def _die(msg, hint=None):
     raise SystemExit(1)
 
 
-def _open(path):
+def _open(path, sibling=None):
     """Open a trace, or explain in plain words why we cannot.
+
+    `sibling` is the next positional argument, if the command has one. It
+    is used only to notice that the two were given the wrong way round.
 
     Every command that takes a TRACE goes through here, so a wrong path
     never reaches sqlite3 and never prints a Python traceback.
@@ -130,6 +138,16 @@ def _open(path):
 
     p = path.rstrip("/")
     if not os.path.exists(p):
+        # `nd watch trace anneal.nd` -- the word TRACE from the docs, typed
+        # literally, with the real trace in the next position.
+        if sibling and os.path.isdir(sibling.rstrip("/")):
+            print("%sreading %s%s  %s(the arguments were the other way "
+                  "round)%s" % (DIM, sibling, OFF, DIM, OFF))
+            return TraceReader(sibling.rstrip("/"))
+        if p in PLACEHOLDERS:
+            _die("%r is the placeholder from the docs, not a file name."
+                 % p, "put the real trace there instead, e.g. "
+                      "%s" % (_traces_here() or ["yourfile.nd"])[0])
         # The commonest mistake by far: the script name, not the trace name.
         guess = os.path.splitext(os.path.basename(p))[0] + ".nd"
         hint = None
@@ -241,7 +259,7 @@ def cmd_info(args):
     for key in ("script", "python", "platform", "driver", "wall_seconds",
                 "error", "seed"):
         if key in r.meta:
-            print("%-11s%s" % (key, r.meta[key]))
+            print("%-13s%s" % (key, r.meta[key]))
     counts = r.kind_counts()
     peak = max(counts.values()) if counts else 1
     print("\n%sevents%s" % (BOLD, OFF))
@@ -276,9 +294,11 @@ def cmd_step(args):
 
 def cmd_watch(args):
     """The feature a normal debugger cannot give you: a variable's whole life."""
-    r = _open(args.trace)
+    r = _open(args.trace, sibling=args.name)
     if not args.name:
         return _list_variables(r, args.trace)
+    if os.path.isdir(args.name.rstrip("/")):
+        return _list_variables(r, args.trace)      # both were traces
     rows = r.history_of(args.name, limit=args.limit)
     if not rows:
         return _no_such_variable(r, args.trace, args.name)
@@ -902,6 +922,27 @@ def cmd_bench(args):
         args.script = sample_path("sort_demo.py")
         print("%sno file given, so benchmarking the bundled sample "
               "(sort_demo.py)%s" % (DIM, OFF))
+    # bench RUNS a program, so it needs the program -- not the recording of
+    # one. Passing the trace used to reach open() and raise IsADirectoryError.
+    if os.path.isdir(args.script):
+        src = None
+        if os.path.exists(os.path.join(args.script, "trace.db")):
+            try:
+                src = _open(args.script).meta.get("script")
+            except SystemExit:
+                raise
+        print("%sbench measures a program, not a trace.%s" % (RED, OFF),
+              file=sys.stderr)
+        if src and os.path.exists(src):
+            print("that trace was made from:\n  nd bench %s"
+                  % os.path.basename(src), file=sys.stderr)
+        else:
+            print("give it the .py file:  nd bench yourscript.py",
+                  file=sys.stderr)
+        raise SystemExit(1)
+    if not os.path.exists(args.script):
+        _die("%s does not exist." % args.script,
+             "bench takes a program to run, e.g.  nd bench yourscript.py")
     base = baseline_seconds(args.script)
     out = "/tmp/_viz_bench.nd"
     res = trace_script(args.script, out, force=args.driver)
