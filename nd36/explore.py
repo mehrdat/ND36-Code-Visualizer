@@ -52,12 +52,50 @@ class Explorer:
             print("\r%sanalysed %s steps, %d functions, %d variables%s"
                   % (DIM, _n(reader.n_steps), len(self.a.functions),
                      len(self.a.variables), OFF))
-        self.cursor = 1
+        self.cursor = self._first_real_line()
         self.running = True
         self._last_cond = None
         self._lines = reader.line_stats()
 
     # ------------------------------------------------------------------ bits
+
+    def _first_real_line(self):
+        """Where to put the cursor when the session opens.
+
+        Step 1 is the module's CALL event, and `pd` there shows the file's
+        docstring -- a useless first impression. Start at the first LINE
+        event that is not part of the module header, so the opening screen
+        shows code that does something.
+        """
+        k_line = schema.KIND_CODE[schema.LINE]
+        k_call = schema.KIND_CODE[schema.CALL]
+        k_bind = schema.KIND_CODE[schema.BIND]
+        first_line = None
+        fallback = None
+        skip = set(self.a.functions)
+        for step in range(1, min(self.r.n_steps, 20000) + 1):
+            rec = self.r.raw(step)
+            if rec[1] == k_line and first_line is None:
+                first_line = step
+            elif rec[1] == k_call and step > 1:
+                # The first call into a function the program defines: real
+                # work starts on the next line event inside it.
+                for after in range(step + 1, min(step + 40,
+                                                 self.r.n_steps) + 1):
+                    if self.r.raw(after)[1] == k_line:
+                        return after
+                return step
+            elif rec[1] == k_bind and fallback is None:
+                # A script with no functions at all: the first assignment
+                # that is not an import or a def.
+                name = self.r.names.get(rec[4])
+                got = self.r.resolve(self.r.vref(rec[5], rec[6], rec[7]),
+                                     step)
+                kind = got.get("type") if isinstance(got, dict) else ""
+                if name and name not in skip and kind not in ("module",
+                                                              "function"):
+                    fallback = step
+        return fallback or first_line or 1
 
     def ev(self, step=None):
         return self.r.view(step or self.cursor)
@@ -185,6 +223,25 @@ class Explorer:
             if test(self._value_at(s)):
                 return s
         return None
+
+    def _need_name(self, cmd, what="variable"):
+        """Instead of \"axv needs a variable\", show the ones worth trying."""
+        if what == "function":
+            items = sorted((f for f in self.a.functions.values()
+                            if f["name"] != "<module>"),
+                           key=lambda f: -f["self_steps"])
+            names = [f["name"] for f in items][:6]
+        else:
+            skip = set(self.a.functions)
+            items = sorted(self.a.variables.items(),
+                           key=lambda kv: -kv[1]["writes"])
+            names = [n for n, _v in items if n not in skip][:6]
+        print("%s%s needs a %s. the ones worth a look here:%s"
+              % (DIM, cmd, what, OFF))
+        for name in names:
+            print("  %s%s %s%s" % (CYAN, cmd, name, OFF))
+        if not names:
+            print("  %s(this trace has none)%s" % (DIM, OFF))
 
     def _value_at(self, step):
         """The value written at `step`, as cheaply as possible.
@@ -376,7 +433,7 @@ class Explorer:
     def c_pV(self, arg=None):
         """pV NAME -- one variable in full, here."""
         if not arg:
-            return print("pV needs a name. `pv` lists them.")
+            return self._need_name("pV")
         st = self.r.state_at(self.cursor)
         ref = None
         for frame in st["frames"][::-1]:
@@ -473,6 +530,17 @@ class Explorer:
     def c_af(self, arg=None):
         """af [NAME] -- one function, wired up. The cursor's, by default."""
         name = self.a.func(arg) if arg else self.fn_at()
+        if not arg and name == "<module>":
+            # The cursor has not moved into a function yet, and <module> is
+            # never the interesting answer. Show the one doing the work.
+            busiest = sorted((f for f in self.a.functions.values()
+                              if f["name"] != "<module>"),
+                             key=lambda f: -f["self_steps"])
+            if busiest:
+                name = busiest[0]["name"]
+                print("%sno function given, so showing the busiest one. "
+                      "`af NAME` for another, `afl` lists them.%s"
+                      % (DIM, OFF))
         f = self.a.functions.get(name)
         if f is None:
             print("%sno function called %r. `afl` lists them.%s"
@@ -560,7 +628,7 @@ class Explorer:
     def c_axv(self, arg=None):
         """axv NAME -- cross references of a variable: writers and readers."""
         if not arg:
-            return print("axv needs a variable. `vl` lists them.")
+            return self._need_name("axv")
         name = arg.strip()
         info = self.a.variables.get(name)
         if info is None:
@@ -672,7 +740,7 @@ class Explorer:
     def c_ch(self, arg=None):
         """ch NAME -- the value table: every change, with the line."""
         if not arg:
-            return print("ch needs a variable. `vl` lists them.")
+            return self._need_name("ch")
         parts = arg.split()
         name = parts[0]
         limit = int(parts[1]) if len(parts) > 1 else 25
@@ -698,7 +766,7 @@ class Explorer:
     def c_pl(self, arg=None):
         """pl NAME -- draw it over the whole run."""
         if not arg:
-            return print("pl needs a variable. `vl` lists them.")
+            return self._need_name("pl")
         name = arg.split()[0]
         series, obj = self.r.numeric_series(name, cap=draw.width() - 14)
         if not series:
@@ -967,8 +1035,21 @@ class Explorer:
             # A bare number is a seek: `1200` means `s 1200`.
             if head.lstrip("+-").rstrip("%").isdigit():
                 return self.c_s(piece)
+            # A bare name is almost always the thing you want to ask about.
+            # `grid` means `axv grid`; `solve` means `af solve`. Typing the
+            # name of the thing is the first instinct, so let it work.
+            if head in self.a.variables and head not in self.a.functions:
+                print("%s(reading that as `axv %s`)%s" % (DIM, head, OFF))
+                return self.c_axv(head)
+            if head in self.a.functions:
+                print("%s(reading that as `af %s`)%s" % (DIM, head, OFF))
+                return self.c_af(head)
             print("%sno command %r. press ? for the list.%s"
                   % (YELLOW, head, OFF))
+            near = [k for k in self.TABLE if k.startswith(head[:1])]
+            if near:
+                print("%scommands starting with %r: %s%s"
+                      % (DIM, head[0], " ".join(sorted(near)[:10]), OFF))
             return
         try:
             fn(self, rest.strip() or None)

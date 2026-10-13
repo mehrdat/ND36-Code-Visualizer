@@ -1,0 +1,30 @@
+[package]
+name = "ndr"
+version = "0.1.0"
+edition = "2021"
+description = "ND36's recorder, rewritten in Rust. Writes the same trace format, so `nd x` reads what `ndr run` records."
+license = "MIT"
+
+[[bin]]
+name = "ndr"
+path = "src/main.rs"
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["auto-initialize"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+flate2 = "1"
+serde_json = "1"
+rustc-hash = "2"
+# `ndr x`: the line editor, mmap, and a Python parser for the static reads.
+rustyline = { version = "17", default-features = false }
+libc = "0.2"
+rustpython-parser = "0.4"
+
+[build-dependencies]
+pyo3-build-config = "0.25"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "unwind"

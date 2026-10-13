@@ -349,6 +349,114 @@ def test_the_commands_doc_covers_every_command():
     print("  COMMANDS.md  documents all %d commands" % len(names))
 
 
+# ------------------------------------- round two of real-world reports
+
+def test_bench_given_a_trace_says_so():
+    """Reported: `nd bench anneal.nd` -> IsADirectoryError traceback.
+    bench RUNS a program, so a trace folder can never be its argument."""
+    path = trace_of("sort.py")
+    got = nd("bench", path)
+    assert "Traceback" not in got.stderr, got.stderr
+    assert "IsADirectoryError" not in got.stderr
+    assert "not a trace" in got.stderr, got.stderr
+    assert "sort.py" in got.stderr, "did not name the source program"
+    assert got.returncode == 1
+    print("  nd bench     a trace folder gets a sentence, not a traceback")
+
+
+def test_the_docs_placeholder_typed_literally_is_recognised():
+    """Reported: `nd watch trace anneal.nd` -- the word TRACE from the
+    docs, typed as if it were the file name, with the real one next."""
+    path = trace_of("sort.py")
+    got = nd("watch", "trace", path)
+    assert "Traceback" not in got.stderr
+    assert got.returncode == 0, got.stderr
+    assert "other way round" in got.stdout, got.stdout
+    got = nd("info", "TRACE")
+    assert "placeholder" in got.stderr, got.stderr
+    print("  placeholder  the word TRACE is spotted, not just rejected")
+
+
+def test_a_bare_name_in_the_explorer_does_the_obvious_thing():
+    """Reported: typing `puzzle` got "no command 'puzzle'".
+
+    Typing the name of the thing you want to know about is everyone's
+    first instinct. A variable means axv, a function means af."""
+    path = trace_of("mixed.py")
+    r = TraceReader(path)
+    a = analyse.load(r, use_cache=False)
+    var = max((v for v in a.variables if v not in a.functions),
+              key=lambda v: a.variables[v]["writes"])
+    fn = next(f for f in a.functions if f != "<module>")
+    out = run(r, path, var)
+    assert "axv %s" % var in out, out
+    assert "written" in out
+    out = run(r, path, fn)
+    assert "af %s" % fn in out, out
+    out = run(r, path, "zzz")
+    assert "no command" in out
+    print("  bare name    %r -> axv, %r -> af, junk still rejected"
+          % (var, fn))
+
+
+def test_a_command_needing_a_name_offers_the_names():
+    """Reported: `axv` alone said "axv needs a variable", twice, and the
+    user had to go and find one. Offer them instead."""
+    path = trace_of("mixed.py")
+    r = TraceReader(path)
+    for cmd in ("axv", "pl", "ch", "pV"):
+        out = run(r, path, cmd)
+        assert "needs a" in out, out
+        offered = [ln for ln in out.splitlines()
+                   if ln.strip().startswith(cmd + " ")
+                   or ("%s " % cmd) in ln and "needs" not in ln]
+        assert offered, "%s offered no names:\n%s" % (cmd, out)
+    print("  no argument  axv/pl/ch/pV each offer real names")
+
+
+def test_the_explorer_opens_on_code_that_does_something():
+    """Reported: the opening screen and `pd` showed the file's docstring,
+    because step 1 is the module's CALL event."""
+    path = trace_of("mixed.py")
+    r = TraceReader(path)
+    ex = explore.Explorer(r, path, quiet=True)
+    assert ex.cursor > 1, "still opening on step 1"
+    ev = r.view(ex.cursor)
+    src = r.source(ev["file"] or "").splitlines()
+    line = src[(ev["line"] or 1) - 1].strip() if src else ""
+    assert line, "opened on a blank line"
+    bad = line.startswith(('"""', "'''", "#"))
+    assert not bad, "opened on a docstring or comment: %r" % line
+    print("  nd x         opens at step %s, on %r"
+          % (f"{ex.cursor:,}", line[:40]))
+
+
+def test_af_with_no_argument_is_never_just_the_module():
+    """<module> is never the interesting answer."""
+    path = trace_of("mixed.py")
+    r = TraceReader(path)
+    ex = explore.Explorer(r, path, quiet=True)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        ex.do("s 1")
+        ex.do("af")
+    assert "busiest" in buf.getvalue(), buf.getvalue()
+    print("  af           falls back to the busiest function")
+
+
+def test_info_field_names_do_not_run_into_their_values():
+    """Reported: `wall_seconds6.5136` -- the column was 11 wide and the
+    longest key is 12 characters."""
+    path = trace_of("sort.py")
+    got = nd("info", path)
+    for line in got.stdout.splitlines():
+        for key in ("wall_seconds", "platform", "python", "driver"):
+            if line.startswith(key):
+                gap = line[len(key):]
+                assert gap.startswith(" "), "%r has no gap" % line
+    print("  nd info      every field name has a gap before its value")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
