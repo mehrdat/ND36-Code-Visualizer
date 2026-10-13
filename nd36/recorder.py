@@ -393,10 +393,14 @@ class MonitoringRecorder:
             return sys.monitoring.DISABLE
         if dest >= offset:
             return                       # forward jump: LINE will cover it
-        frame = self._frame()
-        lineno = frame.f_lineno
-        if self.core.line_of_offset(code).get(dest) == lineno:
-            self.core.line(frame, code, lineno)
+        # The jump's OWN line comes from the line table, not frame.f_lineno:
+        # on Python 3.12 f_lineno already reports the destination during a
+        # JUMP callback, so every `for` header was recorded twice (1,2,2,3...
+        # where settrace says 1,2,3...). ndr found this by disagreeing.
+        lines = self.core.line_of_offset(code)
+        here = lines.get(offset)
+        if here is not None and lines.get(dest) == here:
+            self.core.line(self._frame(), code, here)
 
     def _return(self, code, offset, retval):
         if not self.core.in_scope(code):
